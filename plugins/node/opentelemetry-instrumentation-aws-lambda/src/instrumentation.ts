@@ -59,6 +59,7 @@ import {
 
 import { AwsLambdaInstrumentationConfig, EventContextExtractor } from './types';
 import { VERSION } from './version';
+import { env } from 'process';
 import { LambdaModule } from './internal-types';
 
 const awsPropagator = new AWSXRayPropagator();
@@ -79,6 +80,17 @@ export class AwsLambdaInstrumentation extends InstrumentationBase {
 
   constructor(protected override _config: AwsLambdaInstrumentationConfig = {}) {
     super('@opentelemetry/instrumentation-aws-lambda', VERSION, _config);
+    if (this._config.useAwsContextPropagation == null) {
+      if (
+        typeof env['OTEL_LAMBDA_USE_AWS_CONTEXT_PROPAGATION'] ===
+          'string' &&
+        env[
+          'OTEL_LAMBDA_USE_AWS_CONTEXT_PROPAGATION'
+        ].toLocaleLowerCase() === 'true'
+      ) {
+        this._config.useAwsContextPropagation = true;
+      }
+    }
   }
 
   override setConfig(config: AwsLambdaInstrumentationConfig = {}) {
@@ -163,14 +175,19 @@ export class AwsLambdaInstrumentation extends InstrumentationBase {
       callback: Callback
     ) {
       const config = plugin._config;
+
       const parent = AwsLambdaInstrumentation._determineParent(
         event,
         context,
+        config.useAwsContextPropagation === true,
         config.eventContextExtractor ||
           AwsLambdaInstrumentation._defaultEventContextExtractor
       );
 
-      const links = AwsLambdaInstrumentation._determineLinks();
+      let links: any[] = [];
+      if (!config.useAwsContextPropagation) {
+        links = AwsLambdaInstrumentation._determineLinks();
+      }
 
       const name = context.functionName;
       const span = plugin.tracer.startSpan(
@@ -368,8 +385,32 @@ export class AwsLambdaInstrumentation extends InstrumentationBase {
   private static _determineParent(
     event: any,
     context: Context,
+    useAwsContextPropagation: boolean,
     eventContextExtractor: EventContextExtractor
   ): OtelContext {
+    let parent: OtelContext | undefined = undefined;
+    if (useAwsContextPropagation) {
+      const lambdaTraceHeader = process.env[traceContextEnvironmentKey];
+      if (lambdaTraceHeader) {
+        parent = awsPropagator.extract(
+          otelContext.active(),
+          { [AWSXRAY_TRACE_ID_HEADER]: lambdaTraceHeader },
+          headerGetter
+        );
+      }
+      if (parent) {
+        const spanContext = trace.getSpan(parent)?.spanContext();
+        if (
+          spanContext &&
+          (spanContext.traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED
+        ) {
+          // Trace header provided by Lambda only sampled if a sampled context was propagated from
+          // an upstream cloud service such as S3, or the user is using X-Ray. In these cases, we
+          // need to use it as the parent.
+          return parent;
+        }
+      }
+    }
     const extractedContext = safeExecuteInTheMiddle(
       () => eventContextExtractor(event, context),
       e => {
@@ -384,8 +425,11 @@ export class AwsLambdaInstrumentation extends InstrumentationBase {
     if (trace.getSpan(extractedContext)?.spanContext()) {
       return extractedContext;
     }
-    // No context in Lambda environment or HTTP headers.
-    return ROOT_CONTEXT;
+    if (!parent) {
+      // No context in Lambda environment or HTTP headers.
+      return ROOT_CONTEXT;
+    }
+    return parent;
   }
 
   private static _determineLinks(): Link[] {
