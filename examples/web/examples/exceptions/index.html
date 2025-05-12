@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Error via Event Listener</title>
+  <base href="/">
+  <script>
+    // window.onerror = function(message, source, lineno, colno, error) {
+    //   console.log('Global error caught:');
+    //   console.log('Message:', message);
+    //   console.log('Source:', source);
+    //   console.log('Line:', lineno);
+    //   console.log('Column:', colno);
+    //   console.log('Error object:', error);
+    //   return false;
+    // };
+  </script>
+</head>
+<body>
+  <script type="text/javascript" src="exceptions.js"></script>
+  <h1>Trigger Error with Event Listener</h1>
+  <button id="myButton">Click Me</button>
+
+  <script>
+    document.getElementById('myButton').addEventListener('click', function() {
+      // This will throw a ReferenceError
+      // someUndefinedFunction();
+      throw 'test';
+    });
+  </script>
+</body>
+</html>
+

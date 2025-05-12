@@ -12,6 +12,7 @@ const common = {
     'document-load': 'examples/document-load/index.js',
     meta: 'examples/meta/index.js',
     'user-interaction': 'examples/user-interaction/index.js',
+    exceptions: 'examples/exceptions/index.js',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
