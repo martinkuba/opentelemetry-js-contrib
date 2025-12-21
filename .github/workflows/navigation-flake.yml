@@ -1,0 +1,31 @@
+name: navigation-browser-flake
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  navigation-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npx nx compile @opentelemetry/instrumentation-browser-navigation
+
+      - name: Run browser navigation test (repeat)
+        working-directory: packages/instrumentation-browser-navigation
+        run: |
+          npm run test:browser
